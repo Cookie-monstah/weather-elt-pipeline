@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: stg_weather_current
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+      - name: city
+        tests:
+          - not_null
+
+  - name: stg_weather_forecast
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+      - name: city
+        tests:
+          - not_null
+
+  - name: stg_weather_historical
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+      - name: city
+        tests:
+          - not_null
+      - name: date
+        tests:
+          - not_null

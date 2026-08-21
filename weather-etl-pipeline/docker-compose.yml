@@ -1,0 +1,108 @@
+x-superset-user: &superset-user root
+x-superset-volumes: &superset-volumes
+  - ./docker:/app/docker
+  - superset_data:/app/data
+  - ./docker/superset_config.py:/app/pythonpath/superset_config.py
+
+services:
+  db:
+    container_name: postgres_container
+    image: postgres:14.17
+    ports:
+      - "5000:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-db_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-db_password}
+      POSTGRES_DB: ${POSTGRES_DB:-db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/airflow_init.sql:/docker-entrypoint-initdb.d/airflow_init.sql
+      - ./postgres/superset_init.sql:/docker-entrypoint-initdb.d/superset_init.sql
+    networks:
+      - my-network
+
+  af:
+    container_name: airflow_container
+    image: apache/airflow:3.0.0
+    ports:
+      - "8000:8080"
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:-airflow}@db:5432/${AIRFLOW_DB:-airflow_db}
+      _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-docker requests psycopg2-binary python-dotenv"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./extraction:/opt/airflow/extraction
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - '1001'
+    depends_on:
+      - db
+    networks:
+      - my-network
+    command: >
+      bash -c "airflow db migrate && airflow standalone"
+
+  dbt:
+    container_name: dbt_container
+    image: ghcr.io/dbt-labs/dbt-postgres:1.9.latest
+    volumes:
+      - ./dbt/models:/usr/app/models
+      - ./dbt/dbt_project.yml:/usr/app/dbt_project.yml
+      - ./dbt/profiles.yml:/root/.dbt/profiles.yml
+    working_dir: /usr/app
+    env_file:
+      - .env
+    environment:
+      DBT_PROFILES_DIR: /root/.dbt
+    depends_on:
+      - db
+    networks:
+      - my-network
+    command: run
+
+  superset:
+    env_file:
+      - .env
+    image: apache/superset:3.0.0-py310
+    command: ["/app/docker/docker-bootstrap.sh", "app"]
+    restart: unless-stopped
+    ports:
+      - "${SUPERSET_PORT:-8088}:8088"
+    user: *superset-user
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    volumes: *superset-volumes
+    environment:
+      SUPERSET_LOG_LEVEL: "${SUPERSET_LOG_LEVEL:-info}"
+    networks:
+      - my-network
+
+  superset-init:
+    image: apache/superset:3.0.0-py310
+    command: ["/app/docker/docker-init.sh"]
+    env_file:
+      - .env
+    depends_on:
+      - db
+    user: *superset-user
+    volumes: *superset-volumes
+    environment:
+      SUPERSET_LOAD_EXAMPLES: "${SUPERSET_LOAD_EXAMPLES:-no}"
+      SUPERSET_LOG_LEVEL: "${SUPERSET_LOG_LEVEL:-info}"
+    healthcheck:
+      disable: true
+    networks:
+      - my-network
+
+networks:
+  my-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    external: false
+  superset_data:
+    external: false

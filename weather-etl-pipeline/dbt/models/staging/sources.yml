@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: dev
+    database: db
+    schema: dev
+    tables:
+      - name: raw_weather_current
+      - name: raw_weather_forecast
+      - name: raw_weather_historical

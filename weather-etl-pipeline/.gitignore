@@ -1,0 +1,25 @@
+# Secrets / local config
+.env
+dbt/profiles.yml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Airflow
+airflow/logs/
+airflow.db
+
+# Docker / data
+postgres/data/
+
+# OS / editor
+.DS_Store
+.vscode/

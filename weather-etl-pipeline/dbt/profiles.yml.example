@@ -1,0 +1,12 @@
+weather_etl:
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'db') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | as_number }}"
+      user: "{{ env_var('POSTGRES_USER', 'db_user') }}"
+      pass: "{{ env_var('POSTGRES_PASSWORD', 'db_password') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'db') }}"
+      schema: dev
+      threads: 4
+  target: dev

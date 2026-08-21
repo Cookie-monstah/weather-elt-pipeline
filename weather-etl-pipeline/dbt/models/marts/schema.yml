@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: dim_location
+    columns:
+      - name: location_id
+        tests:
+          - unique
+          - not_null
+      - name: city
+        tests:
+          - not_null
+
+  - name: dim_date
+    columns:
+      - name: date_id
+        tests:
+          - unique
+          - not_null
+
+  - name: fact_weather_observations
+    columns:
+      - name: location_id
+        tests:
+          - not_null
+      - name: date_id
+        tests:
+          - not_null
+
+  - name: fact_forecast_accuracy
+    columns:
+      - name: location_id
+        tests:
+          - not_null
+      - name: date_id
+        tests:
+          - not_null
+
+  - name: mart_wind_distribution
+    columns:
+      - name: location_id
+        tests:
+          - not_null
+      - name: direction
+        tests:
+          - not_null
+      - name: speed_bucket
+        tests:
+          - not_null

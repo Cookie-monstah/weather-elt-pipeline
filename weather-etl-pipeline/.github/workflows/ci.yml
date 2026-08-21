@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install extraction dependencies
+        run: pip install -r extraction/requirements.txt
+
+      - name: Compile extraction module
+        run: python -m py_compile extraction/extract.py
+
+      - name: Install dbt
+        run: pip install dbt-postgres==1.9.0
+
+      - name: dbt parse (validates project + model syntax)
+        working-directory: dbt
+        run: |
+          cp profiles.yml.example profiles.yml
+          dbt parse --profiles-dir . --project-dir .
