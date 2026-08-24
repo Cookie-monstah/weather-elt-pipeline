@@ -1,96 +1,99 @@
 # weather-etl-pipeline
 
-A local ETL pipeline that pulls current conditions, hourly forecasts, and
-daily historical actuals from the [Open-Meteo](https://open-meteo.com/) API
-(free, no API key required) for a configurable set of cities, loads them into
-Postgres, transforms them with dbt into a star schema, orchestrates the run
-with Airflow, and visualizes the results in Superset.
+An end-to-end data pipeline that extracts, loads, and transforms weather
+data for multiple cities using the [Open-Meteo](https://open-meteo.com/)
+API, and presents it through an interactive Superset dashboard. The
+pipeline is fully containerized and orchestrated with Apache Airflow.
 
-Because Open-Meteo exposes both forecasts and later-observed actuals, the
-pipeline also builds a forecast-accuracy mart — comparing what was predicted
-against what actually happened, broken out by lead time.
+![Pipeline demo](docs/weather-etl-pipeline.gif)
+
+## Overview
+
+The pipeline pulls three types of data for each tracked city: current
+conditions, hourly forecasts, and daily historical actuals. Because
+Open-Meteo provides both forecasts and later-observed outcomes, the project
+also includes a forecast-accuracy analysis, comparing predicted values
+against what actually occurred, broken down by lead time.
+
+**Key technical elements:**
+
+- **Data modeling**: raw data is landed in append-only tables and
+  transformed through a staging, intermediate, and mart layered
+  architecture in dbt, resulting in a star schema (fact and dimension
+  tables) suitable for BI tooling
+- **Orchestration**: Apache Airflow schedules and sequences extraction,
+  transformation, and automated data quality checks
+- **Data quality**: dbt tests enforce not-null and uniqueness constraints
+  across staging models and mart keys
+- **Analytics engineering**: derived metrics include daily rollups,
+  forecast error by lead time, and wind direction/speed distributions
+- **Visualization**: a six-chart Superset dashboard covering time series,
+  geospatial, calendar, and categorical views
+- **Infrastructure**: the full stack (Postgres, Airflow, dbt, Superset)
+  runs via Docker Compose, with environment-based configuration and no
+  secrets committed to version control
+- **CI**: GitHub Actions validates the extraction module and the dbt
+  project on every push
+
+## Tech stack
+
+| Layer | Tools |
+|---|---|
+| Language | Python |
+| Database | PostgreSQL |
+| Transformation | dbt |
+| Orchestration | Apache Airflow |
+| Visualization | Apache Superset |
+| Infrastructure | Docker, Docker Compose |
+| CI/CD | GitHub Actions |
+| Data source | Open-Meteo API (REST) |
 
 ## Architecture
 
 ```
-Open-Meteo API (geocoding, forecast, archive)
+Open-Meteo API
       │
       ▼
-extraction/extract.py  ──▶  Postgres raw landing tables (append-only)
-      │                       dev.raw_weather_current
-      │                       dev.raw_weather_forecast
-      │                       dev.raw_weather_historical
+extraction/extract.py  ──▶  raw tables in Postgres
+      │
       ▼
-  Airflow DAG
-(dags/weather_etl_dag.py)
-extract → dbt run → dbt test
-                            │
-                            ▼
-                     dbt staging (clean/type/dedup)
-                            │
-                            ▼
-                  dbt intermediate (rollups, forecast-vs-actual join)
-                            │
-                            ▼
-                  dbt marts (star schema)
-                     dim_location, dim_date
-                     fact_weather_observations
-                     fact_forecast_accuracy
-                     mart_wind_distribution
-                            │
-                            ▼
-                        Superset
-                  ("Weather ETL Overview" dashboard)
+  Airflow DAG: extract  →  dbt run  →  dbt test
+                                 │
+                                 ▼
+              dbt staging  →  dbt intermediate  →  dbt marts
+              (clean/type)    (rollups, joins)     (star schema)
+                                 │
+                                 ▼
+                          Superset dashboard
 ```
 
-- **extraction/** — for each configured city: geocodes it, pulls current
-  conditions + next-48h hourly forecast in one call, and pulls one day of
-  historical daily actuals (`HISTORICAL_BACKFILL_DAYS` days back). All three
-  are appended to raw landing tables — nothing is overwritten, so staging
-  models handle deduplication.
-- **dags/** — Airflow DAG: run extraction for all cities, `dbt run`, then
-  `dbt test`.
-- **dbt/models/staging/** — 1:1 cleaned/typed/deduped views of each raw table.
-- **dbt/models/intermediate/** — `int_daily_current_rollup` (daily avg
-  temperature/wind/humidity/pressure from current-condition pulls),
-  `int_forecast_accuracy` (joins each forecast row to the historical actual
-  for its target date, computing lead time and error), `int_wind_distribution`
-  (bins current-pull wind observations into 16-point compass directions ×
-  speed buckets).
-- **dbt/models/marts/** — star schema:
-  - `dim_location` — city/country/lat/lon, one row per location
-  - `dim_date` — calendar date spine derived from the historical data range
-  - `fact_weather_observations` — daily grain: historical actuals
-    (temp max/min, precipitation, max wind, dominant wind direction) plus
-    same-day current-pull averages (temperature, wind speed, humidity,
-    pressure), keyed by `location_id`/`date_id`
-  - `fact_forecast_accuracy` — one row per forecast issuance/target hour,
-    with `lead_time_hours` and `temperature_error` (forecast − actual)
-  - `mart_wind_distribution` — observation counts per city/compass
-    direction/speed bucket (wind-rose substitute, since Superset has no
-    native wind-rose chart)
-- **superset/dashboards/** — exported Superset dashboard definition
-  (`.zip`) for version control — see [Dashboard](#dashboard) below.
-- **postgres/** — init SQL that provisions the `airflow` and `superset`
-  service databases alongside the main app database.
-- **docker/** — Superset bootstrap/init scripts and `superset_config.py`.
+## Project structure
 
-## Prerequisites
-
-- Docker and Docker Compose
-- No API key needed (Open-Meteo is free and unauthenticated)
+- **extraction/** Python module that geocodes each city and pulls current
+  conditions, hourly forecasts, and historical actuals from Open-Meteo
+- **dags/** Airflow DAG that runs extraction, then dbt, then dbt tests
+- **dbt/** staging, intermediate, and mart models implementing the star
+  schema
+- **superset/dashboards/** exported dashboard definition, version
+  controlled alongside the code
+- **postgres/** database provisioning scripts for the Airflow and Superset
+  metadata databases
+- **docker/** Superset configuration and startup scripts
 
 ## Setup
 
-1. Copy the environment template and adjust as needed (city list, backfill
-   window, DB/Superset credentials):
+Requires Docker and Docker Compose. No API key is required, as Open-Meteo
+is free and unauthenticated.
+
+1. Copy the environment template and adjust as needed (tracked cities,
+   historical backfill window, database credentials):
 
    ```bash
    cp .env.example .env
    ```
 
-2. Copy the dbt profile template (kept out of git since it's the file dbt
-   actually reads):
+2. Copy the dbt profile template (kept out of version control, since it is
+   the file dbt actually reads):
 
    ```bash
    cp dbt/profiles.yml.example dbt/profiles.yml
@@ -102,77 +105,76 @@ extract → dbt run → dbt test
    docker compose up -d
    ```
 
-4. Services:
+4. Access the services:
 
    | Service  | URL                     | Notes                          |
    |----------|-------------------------|---------------------------------|
-   | Airflow  | http://localhost:8000   | admin credentials printed on first `airflow standalone` boot |
-   | Superset | http://localhost:8088   | admin / admin (change in production) |
-   | Postgres | localhost:5000          | see `.env` for credentials     |
+   | Airflow  | http://localhost:8000   | admin password generated on first boot (see below) |
+   | Superset | http://localhost:8088   | default admin / admin, change before any non-local use |
+   | Postgres | localhost:5000          | credentials in `.env`          |
 
-5. In the Airflow UI, unpause the `weather-etl-orchestrator` DAG. Each run:
-   extracts current + forecast + one day of historical actuals for every city
-   in `WEATHER_CITIES`, loads the raw tables, runs `dbt run`, then `dbt test`.
+   Retrieve the generated Airflow admin password:
 
-   Note: `fact_weather_observations` and `fact_forecast_accuracy` only
-   populate once at least one day of historical actuals has landed —
-   run the DAG a few times (or lower `HISTORICAL_BACKFILL_DAYS` cities'
-   worth of days back) to build up enough history for forecast-accuracy
-   comparisons to have matching actuals.
+   ```bash
+   docker compose exec af cat /opt/airflow/simple_auth_manager_passwords.json.generated
+   ```
 
-## Running extraction or dbt manually
+5. In the Airflow UI, unpause the `weather-etl-orchestrator` DAG. Each run
+   extracts current conditions, forecast data, and one day of historical
+   actuals for every configured city, loads the raw tables, and runs the
+   dbt transformation and test suite.
+
+**Note on data volume**: several charts (forecast accuracy, the
+precipitation calendar, wind distribution, extreme-heat tracking) depend on
+multiple days of accumulated history and will show sparse results after a
+single run. This reflects the nature of the underlying metrics rather than
+a defect in the pipeline.
+
+## Running components manually
 
 ```bash
-# Extraction (from your host, with a local venv)
+# Extraction, from the host
 pip install -r extraction/requirements.txt
 POSTGRES_HOST=localhost POSTGRES_PORT=5000 python extraction/extract.py
 
-# dbt (inside the dbt container)
+# dbt, inside the dbt container
 docker compose run --rm dbt run
 docker compose run --rm dbt test
 ```
 
+## Data model
+
+- **Staging**: one model per raw source, deduplicated and typed
+- **Intermediate**: `int_daily_current_rollup` (daily averages from
+  current-condition pulls), `int_forecast_accuracy` (forecast rows joined
+  to their later-observed actuals, with lead time and error computed),
+  `int_wind_distribution` (wind observations binned into 16-point compass
+  directions and speed buckets)
+- **Marts**:
+  - `dim_location`, `dim_date`: dimension tables
+  - `fact_weather_observations`: daily grain, combining historical actuals
+    with same-day current-condition averages
+  - `fact_forecast_accuracy`: forecast issuance vs. actual outcome, by
+    lead time
+  - `mart_wind_distribution`: wind observation counts by direction and
+    speed bucket, used in place of a native wind-rose chart
+
 ## Dashboard
 
-The **"Weather ETL Overview"** dashboard (exported to
-`superset/dashboards/`) has 6 charts, all cross-filterable by `city`:
+The "Weather ETL Overview" dashboard includes six charts, cross-filterable
+by city:
 
-| Chart | Type | Dataset | Notes |
-|---|---|---|---|
-| Daily Temperature by City | Line | `fact_weather_observations` | `temp_max`/`temp_min` over time, grouped by city, Time Grain = Day |
-| Forecast Accuracy by Lead Time | Bar | `fact_forecast_accuracy` | `AVG(temperature_error)` by `lead_time_hours`, grouped by city — needs several days of history to populate |
-| Precipitation Calendar Heatmap | Calendar Heatmap | `fact_weather_observations` | `SUM(precipitation_sum)`; Superset's Calendar Heatmap has no per-series groupby, so this is combined across cities (per-city split done via the dashboard's `city` filter) |
-| Current Conditions Map | deck.gl Scatterplot | `geo_latest_conditions` (virtual/SQL dataset, see below) | Point size from `temp_max`; no basemap tiles unless `MAPBOX_API_KEY` is set |
-| Extreme Heat Days by Month | Bar | `fact_weather_observations` | Custom SQL metric `COUNT(CASE WHEN temp_max > 30 THEN 1 END)` — tune the threshold per city's climate |
-| Wind Direction & Speed Distribution | Bar (stacked) | `mart_wind_distribution` | `SUM(observation_count)` by `direction`, stacked by `speed_bucket` — wind-rose substitute |
+- **Daily Temperature by City**: daily high/low trends over time
+- **Forecast Accuracy by Lead Time**: mean temperature error grouped by
+  forecast lead time
+- **Precipitation Calendar Heatmap**: daily precipitation shown as a
+  calendar view
+- **Current Conditions Map**: geospatial view of the latest observation
+  per city
+- **Extreme Heat Days by Month**: monthly count of days exceeding a
+  configurable temperature threshold
+- **Wind Direction & Speed Distribution**: stacked bar chart approximating
+  a wind rose
 
-**`geo_latest_conditions`** is a virtual dataset (saved from a SQL Lab query,
-not a dbt model) since no single mart has both coordinates and metrics:
-
-```sql
-select
-    dl.city, dl.country, dl.latitude, dl.longitude,
-    f.date, f.temp_max, f.temp_min, f.avg_temperature, f.wind_direction_dominant
-from dev.dim_location dl
-join dev.fact_weather_observations f on dl.location_id = f.location_id
-where f.date = (
-    select max(date) from dev.fact_weather_observations f2
-    where f2.location_id = f.location_id
-)
-```
-
-To restore the dashboard on a fresh Superset instance: **Dashboards > Import
-dashboard**, select the `.zip` in `superset/dashboards/`.
-
-### Data volume caveat
-
-Several charts (forecast accuracy, calendar heatmap, wind distribution,
-extreme-heat tracker) are only interesting once the DAG has run repeatedly
-over multiple days — with a single run they'll show sparse or empty results.
-This is expected, not a bug; let the DAG accumulate history.
-
-## Security notes
-
-- No API key is required for this project since it uses Open-Meteo.
-- `.env` and `dbt/profiles.yml` are gitignored — never commit real
-  credentials. Only the `.example` templates are tracked.
+The dashboard definition is exported to `superset/dashboards/` and can be
+restored on a fresh Superset instance via Dashboards > Import dashboard.
