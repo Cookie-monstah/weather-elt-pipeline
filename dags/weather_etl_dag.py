@@ -24,17 +24,17 @@ dag = DAG(
 
 DBT_MOUNTS = [
     Mount(
-        source="/home/yow/repos/weather-etl-pipeline/dbt/models",
+        source="/home/yow/repos/dbt/models",
         target="/usr/app/models",
         type="bind",
     ),
     Mount(
-        source="/home/yow/repos/weather-etl-pipeline/dbt/dbt_project.yml",
+        source="/home/yow/repos/dbt/dbt_project.yml",
         target="/usr/app/dbt_project.yml",
         type="bind",
     ),
     Mount(
-        source="/home/yow/repos/weather-etl-pipeline/dbt/profiles.yml",
+        source="/home/yow/repos/dbt/profiles.yml",
         target="/root/.dbt/profiles.yml",
         type="bind",
     ),
