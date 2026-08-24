@@ -1,11 +1,11 @@
-# weather-etl-pipeline
+# weather-elt-pipeline
 
 An end-to-end data pipeline that extracts, loads, and transforms weather
 data for multiple cities using the [Open-Meteo](https://open-meteo.com/)
 API, and presents it through an interactive Superset dashboard. The
 pipeline is fully containerized and orchestrated with Apache Airflow.
 
-![Pipeline demo](docs/weather-etl-pipeline.gif)
+![Pipeline demo](docs/weather-elt-pipeline.gif)
 
 ## Overview
 
@@ -125,7 +125,7 @@ is free and unauthenticated.
    docker compose exec af cat /opt/airflow/simple_auth_manager_passwords.json.generated
    ```
 
-5. In the Airflow UI, unpause the `weather-etl-orchestrator` DAG. Each run
+5. In the Airflow UI, unpause the `weather-elt-orchestrator` DAG. Each run
    extracts current conditions, forecast data, and one day of historical
    actuals for every configured city, loads the raw tables, and runs the
    dbt transformation and test suite.
@@ -167,7 +167,7 @@ docker compose run --rm dbt test
 
 ## Dashboard
 
-The "Weather ETL Overview" dashboard includes six charts, cross-filterable
+The "Weather ELT Overview" dashboard includes six charts, cross-filterable
 by city:
 
 - **Daily Temperature by City**: daily high/low trends over time

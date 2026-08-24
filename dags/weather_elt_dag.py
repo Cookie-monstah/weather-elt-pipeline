@@ -22,7 +22,7 @@ default_args = {
 }
 
 dag = DAG(
-    dag_id="weather-etl-orchestrator",
+    dag_id="weather-elt-orchestrator",
     default_args=default_args,
     catchup=False,
     schedule=timedelta(hours=1),
@@ -54,7 +54,7 @@ def dbt_docker_operator(task_id: str, command: str) -> DockerOperator:
         command=command,
         working_dir="/usr/app",
         mounts=DBT_MOUNTS,
-        network_mode="weather-etl-pipeline_my-network",
+        network_mode="weather-elt-pipeline_my-network",
         docker_url="unix://var/run/docker.sock",
         auto_remove="success",
     )

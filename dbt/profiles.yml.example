@@ -1,4 +1,4 @@
-weather_etl:
+weather_elt:
   outputs:
     dev:
       type: postgres

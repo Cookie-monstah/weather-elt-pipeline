@@ -1,7 +1,7 @@
-name: 'weather_etl'
+name: 'weather_elt'
 version: '1.0.0'
 
-profile: 'weather_etl'
+profile: 'weather_elt'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
@@ -15,7 +15,7 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  weather_etl:
+  weather_elt:
     staging:
       +materialized: table
     intermediate:
