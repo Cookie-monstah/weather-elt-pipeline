@@ -1,3 +1,4 @@
+import os
 import sys
 from datetime import datetime, timedelta
 
@@ -8,6 +9,11 @@ from docker.types import Mount
 
 sys.path.append("/opt/airflow/extraction")
 from extract import main as run_extraction  # noqa: E402
+
+# Absolute path to this project on the Docker host, not inside this container.
+# DockerOperator launches sibling containers via the host's Docker daemon, so
+# bind-mount sources must be host paths. Set by docker-compose.yml from ${PWD}.
+HOST_PROJECT_DIR = os.environ["HOST_PROJECT_DIR"]
 
 default_args = {
     "description": "Fetch weather data from Open-Meteo, load raw records into "
@@ -24,17 +30,17 @@ dag = DAG(
 
 DBT_MOUNTS = [
     Mount(
-        source="/home/yow/repos/dbt/models",
+        source=f"{HOST_PROJECT_DIR}/dbt/models",
         target="/usr/app/models",
         type="bind",
     ),
     Mount(
-        source="/home/yow/repos/dbt/dbt_project.yml",
+        source=f"{HOST_PROJECT_DIR}/dbt/dbt_project.yml",
         target="/usr/app/dbt_project.yml",
         type="bind",
     ),
     Mount(
-        source="/home/yow/repos/dbt/profiles.yml",
+        source=f"{HOST_PROJECT_DIR}/dbt/profiles.yml",
         target="/root/.dbt/profiles.yml",
         type="bind",
     ),

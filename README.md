@@ -105,6 +105,12 @@ is free and unauthenticated.
    docker compose up -d
    ```
 
+   No path configuration needed here: the Airflow DAG launches a separate
+   dbt container via the host's Docker socket, which requires host
+   filesystem paths rather than in-container ones. `docker-compose.yml`
+   passes the project's absolute path through automatically (`${PWD}`), so
+   this works out of the box regardless of where the repo is cloned to.
+
 4. Access the services:
 
    | Service  | URL                     | Notes                          |
