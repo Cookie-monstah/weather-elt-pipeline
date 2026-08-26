@@ -96,15 +96,15 @@ def fetch_current_and_forecast(location: dict) -> tuple[dict, list[dict]]:
     return current_record, forecast_records
 
 
-def fetch_historical(location: dict, target_date: date) -> dict:
-    print(f"Fetching historical actuals for {location['city']} on {target_date}...")
+def fetch_historical(location: dict, start_date: date, end_date: date) -> list[dict]:
+    print(f"Fetching historical actuals for {location['city']} from {start_date} to {end_date}...")
     response = requests.get(
         ARCHIVE_URL,
         params={
             "latitude": location["latitude"],
             "longitude": location["longitude"],
-            "start_date": target_date.isoformat(),
-            "end_date": target_date.isoformat(),
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
             "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,"
             "wind_speed_10m_max,wind_direction_10m_dominant",
             "timezone": "auto",
@@ -114,17 +114,21 @@ def fetch_historical(location: dict, target_date: date) -> dict:
     response.raise_for_status()
     payload = response.json()
     daily = payload["daily"]
+    utc_offset_seconds = payload["utc_offset_seconds"]
 
-    return {
-        **location,
-        "date": daily["time"][0],
-        "temp_max": daily["temperature_2m_max"][0],
-        "temp_min": daily["temperature_2m_min"][0],
-        "precipitation_sum": daily["precipitation_sum"][0],
-        "wind_speed_max": daily["wind_speed_10m_max"][0],
-        "wind_direction_dominant": daily["wind_direction_10m_dominant"][0],
-        "utc_offset_seconds": payload["utc_offset_seconds"],
-    }
+    return [
+        {
+            **location,
+            "date": daily["time"][i],
+            "temp_max": daily["temperature_2m_max"][i],
+            "temp_min": daily["temperature_2m_min"][i],
+            "precipitation_sum": daily["precipitation_sum"][i],
+            "wind_speed_max": daily["wind_speed_10m_max"][i],
+            "wind_direction_dominant": daily["wind_direction_10m_dominant"][i],
+            "utc_offset_seconds": utc_offset_seconds,
+        }
+        for i in range(len(daily["time"]))
+    ]
 
 
 def connect_to_db():
@@ -235,9 +239,9 @@ def insert_forecast(conn, records: list[dict]):
     conn.commit()
 
 
-def insert_historical(conn, record: dict):
+def insert_historical(conn, records: list[dict]):
     with conn.cursor() as cursor:
-        cursor.execute(
+        cursor.executemany(
             """
             INSERT INTO dev.raw_weather_historical (
                 city, country, latitude, longitude, date,
@@ -247,7 +251,7 @@ def insert_historical(conn, record: dict):
                       %(temp_max)s, %(temp_min)s, %(precipitation_sum)s, %(wind_speed_max)s, %(wind_direction_dominant)s,
                       %(utc_offset_seconds)s)
             """,
-            record,
+            records,
         )
     conn.commit()
 
@@ -256,7 +260,8 @@ def main():
     conn = connect_to_db()
     try:
         create_tables(conn)
-        backfill_date = date.today() - timedelta(days=HISTORICAL_BACKFILL_DAYS)
+        end_date = date.today() - timedelta(days=1)
+        start_date = end_date - timedelta(days=HISTORICAL_BACKFILL_DAYS - 1)
 
         for city in WEATHER_CITIES:
             location = geocode_city(city)
@@ -266,9 +271,9 @@ def main():
             insert_forecast(conn, forecast_records)
             print(f"Inserted 1 current + {len(forecast_records)} forecast rows for {location['city']}")
 
-            historical_record = fetch_historical(location, backfill_date)
-            insert_historical(conn, historical_record)
-            print(f"Inserted historical actuals for {location['city']} on {backfill_date}")
+            historical_records = fetch_historical(location, start_date, end_date)
+            insert_historical(conn, historical_records)
+            print(f"Inserted {len(historical_records)} historical rows for {location['city']}")
     finally:
         conn.close()
 
